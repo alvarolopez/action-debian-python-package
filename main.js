@@ -155,7 +155,7 @@ async function main() {
             "exec",
             container,
             "bash", "-c",
-            `apt-get install -yq -t '${imageTag}' dpkg-dev debhelper devscripts lintian || apt-get install -yq dpkg-dev debhelper devscripts lintian`
+            `apt-get install -yq -t '${imageTag}' dpkg-dev debhelper devscripts lintian python3-pip || apt-get install -yq dpkg-dev debhelper devscripts lintian python3-pip`
         ])
         core.endGroup()
 
