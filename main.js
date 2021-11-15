@@ -126,7 +126,7 @@ async function main() {
         await exec.exec("docker", [
             "exec",
             container,
-            "apt-get", "install", "-yq", "-t", imageTag, "dpkg-dev", "debhelper", "devscripts", "python3-pip"
+            "apt-get", "install", "-yq", "-t", imageTag, "dpkg-dev", "debhelper", "devscripts", "python3-pip", "tox"
         ])
         core.endGroup()
 
