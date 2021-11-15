@@ -167,6 +167,14 @@ async function main() {
         ])
         core.endGroup()
 
+        core.startGroup("Install development packages from pip")
+        await exec.exec("docker", [
+            "exec",
+            container,
+            "pip", "install", "-r", sourceDirectory + "/requirements.txt", "-r", sourceDirectory + "/test-requirements.txt"
+        ])
+        core.endGroup()
+
         if (imageTag != "trusty") {
             core.startGroup("Install build dependencies")
             await exec.exec("docker", [
