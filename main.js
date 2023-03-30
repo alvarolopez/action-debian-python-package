@@ -171,7 +171,8 @@ async function main() {
         await exec.exec("docker", [
             "exec",
             container,
-            "pip", "install", "-r", sourceDirectory + "/requirements.txt", "-r", sourceDirectory + "/test-requirements.txt"
+            // "pip", "install", "-r", sourceDirectory + "/requirements.txt", "-r", sourceDirectory + "/test-requirements.txt"
+            "pip", "install", "-r", sourceDirectory + "/requirements.txt"
         ])
         core.endGroup()
 
