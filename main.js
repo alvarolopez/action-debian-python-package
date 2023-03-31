@@ -1,7 +1,6 @@
 const core = require("@actions/core")
 const exec = require("@actions/exec")
 const firstline = require("firstline")
-const hub = require("docker-hub-utils")
 const path = require("path")
 const fs = require("fs")
 
@@ -19,9 +18,16 @@ function getImageTag(imageName, distribution) {
 async function getImageName(distribution) {
     const tag = getImageTag("", distribution)
     for (const image of ["debian", "ubuntu"]) {
-        const tags = await hub.queryTags({ user: "library", name: image })
-        if (tags.find(t => t.name == tag)) {
+        try {
+            core.startGroup("Get image name")
+            await exec.exec("skopeo", [
+                "inspect",
+                `docker://docker.io/library/${image}:${tag}`
+            ])
+            core.endGroup()
             return image
+        } catch {
+            continue
         }
     }
 }
@@ -32,6 +38,8 @@ async function main() {
         const sourceRelativeDirectory = core.getInput("source_directory") || "./"
         const artifactsRelativeDirectory = core.getInput("artifacts_directory") || "./"
         const osDistribution = core.getInput("os_distribution") || ""
+        const lintianOpts = core.getInput("lintian_opts") || ""
+        const lintianRun = core.getBooleanInput('lintian_run') || false
 
         const workspaceDirectory = process.cwd()
         const sourceDirectory = path.join(workspaceDirectory, sourceRelativeDirectory)
@@ -64,7 +72,9 @@ async function main() {
             workspaceDirectory: workspaceDirectory,
             sourceDirectory: sourceDirectory,
             buildDirectory: buildDirectory,
-            artifactsDirectory: artifactsDirectory
+            artifactsDirectory: artifactsDirectory,
+            lintianOpts: lintianOpts,
+            lintianRun: lintianRun
         }
         console.log(details)
         core.endGroup()
@@ -72,7 +82,7 @@ async function main() {
         if (cpuArchitecture != "amd64") {
             core.startGroup("Install QEMU")
             // Need newer QEMU to avoid errors
-            await exec.exec("wget", ["http://mirrors.kernel.org/ubuntu/pool/universe/q/qemu/qemu-user-static_5.2+dfsg-9ubuntu2_amd64.deb", "-O", "/tmp/qemu.deb"])
+            await exec.exec("wget", ["http://mirrors.kernel.org/ubuntu/pool/universe/q/qemu/qemu-user-static_6.2+dfsg-2ubuntu6_amd64.deb", "-O", "/tmp/qemu.deb"])
             await exec.exec("sudo", ["dpkg", "-i", "/tmp/qemu.deb"])
             core.endGroup()
         }
@@ -122,10 +132,29 @@ async function main() {
         ])
         core.endGroup()
 
+        // The goofy usage of "apt-get -t || apt-get" here is because
+        // of github issue #63.
+        //
+        // When building on a "normal" release like "bullseye", the
+        // debian container is generated with "bullseye-updates" enabled.
+        // This can cause problems when specifying the target release as
+        // `-t bullseye`.  For example, if "bullseye-updates" contains
+        // a new version of libc6 and libc6-dev, then the image will
+        // contain the updated libc6, but "apt-get -t bullseye" would try
+        // to install the old version of libc6-dev.  Since libc6-dev has
+        // a versioned dependency on the matching libc6, this will fail.
+        //
+        // On a backports release like "bullseye-backports", the
+        // backports package archive has a lower priority than the
+        // "parent" package archive.  When building in this situation
+        // apt-get needs "-t" in order to raise the priority of the
+        // backports packages so that they get installed, instead of
+        // installing the older packages from the parent release.
         core.startGroup("Install development packages")
         await exec.exec("docker", [
             "exec",
             container,
+<<<<<<< HEAD
             "apt-get", "install", "-yq", "-t", imageTag, "dpkg-dev", "debhelper", "devscripts", "python3-pip", "tox"
         ])
         core.endGroup()
@@ -136,6 +165,29 @@ async function main() {
             container,
             // "pip", "install", "-r", sourceDirectory + "/requirements.txt", "-r", sourceDirectory + "/test-requirements.txt"
             "pip", "install", "-r", sourceDirectory + "/requirements.txt"
+||||||| 806c895
+            "apt-get", "install", "-yq", "-t", imageTag, "dpkg-dev", "debhelper", "devscripts"
+=======
+            "bash", "-c",
+            `apt-get install -yq -t '${imageTag}' dpkg-dev debhelper devscripts lintian python3-pip tox || apt-get install -yq dpkg-dev debhelper devscripts lintian python3-pip tox`
+        ])
+        core.endGroup()
+
+        core.startGroup("Trust this git repo")
+        await exec.exec("docker", [
+            "exec",
+            container,
+            "git", "config", "--global", "--add", "safe.directory", sourceDirectory
+        ])
+        core.endGroup()
+
+        core.startGroup("Install development packages from pip")
+        await exec.exec("docker", [
+            "exec",
+            container,
+            // "pip", "install", "-r", sourceDirectory + "/requirements.txt", "-r", sourceDirectory + "/test-requirements.txt"
+            "pip", "install", "-r", sourceDirectory + "/requirements.txt"
+>>>>>>> dawidd6-master
         ])
         core.endGroup()
 
@@ -144,7 +196,8 @@ async function main() {
             await exec.exec("docker", [
                 "exec",
                 container,
-                "apt-get", "build-dep", "-yq", "-t", imageTag, sourceDirectory
+                "bash", "-c",
+                `apt-get build-dep -yq -t '${imageTag}' '${sourceDirectory}' || apt-get build-dep -yq '${sourceDirectory}'`
             ])
             core.endGroup()
         }
@@ -154,8 +207,14 @@ async function main() {
             await exec.exec("docker", [
                 "exec",
                 container,
-                "git-deborig",
-                "HEAD"
+                "tar",
+                "--exclude-vcs",
+                "--exclude=debian",
+                "--create",
+                "--gzip",
+                "--verbose",
+                `--file=../${pkg}_${version}.orig.tar.gz`,
+                "."
             ])
             core.endGroup()
         }
@@ -167,6 +226,38 @@ async function main() {
             "dpkg-buildpackage"
         ])
         core.endGroup()
+
+        if (lintianRun) {
+            core.startGroup("Run static analysis")
+            await exec.exec("docker", [
+                "exec",
+                container,
+                "find",
+                buildDirectory,
+                "-maxdepth", "1",
+                "-name", `*${version}*.changes`,
+                "-type", "f",
+                "-print",
+                "-exec", "lintian", lintianOpts, "{}", "\+"
+            ])
+            core.endGroup()
+        }
+
+        // core.startGroup("Install built packages")
+        // await exec.exec("docker", [
+        //     "exec",
+        //     container,
+        //     "debi", "--with-depends"
+        // ])
+        // core.endGroup()
+
+        // core.startGroup("List packages contents")
+        // await exec.exec("docker", [
+        //     "exec",
+        //     container,
+        //     "debc"
+        // ])
+        // core.endGroup()
 
         core.startGroup("Move build artifacts")
         await exec.exec("docker", [
