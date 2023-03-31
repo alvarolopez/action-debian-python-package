@@ -154,20 +154,6 @@ async function main() {
         await exec.exec("docker", [
             "exec",
             container,
-<<<<<<< HEAD
-            "apt-get", "install", "-yq", "-t", imageTag, "dpkg-dev", "debhelper", "devscripts", "python3-pip", "tox"
-        ])
-        core.endGroup()
-
-        core.startGroup("Install development packages from pip")
-        await exec.exec("docker", [
-            "exec",
-            container,
-            // "pip", "install", "-r", sourceDirectory + "/requirements.txt", "-r", sourceDirectory + "/test-requirements.txt"
-            "pip", "install", "-r", sourceDirectory + "/requirements.txt"
-||||||| 806c895
-            "apt-get", "install", "-yq", "-t", imageTag, "dpkg-dev", "debhelper", "devscripts"
-=======
             "bash", "-c",
             `apt-get install -yq -t '${imageTag}' dpkg-dev debhelper devscripts lintian python3-pip tox || apt-get install -yq dpkg-dev debhelper devscripts lintian python3-pip tox`
         ])
@@ -187,7 +173,6 @@ async function main() {
             container,
             // "pip", "install", "-r", sourceDirectory + "/requirements.txt", "-r", sourceDirectory + "/test-requirements.txt"
             "pip", "install", "-r", sourceDirectory + "/requirements.txt"
->>>>>>> dawidd6-master
         ])
         core.endGroup()
 
