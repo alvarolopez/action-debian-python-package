@@ -188,18 +188,20 @@ async function main() {
         }
 
         if (revision) {
-            core.startGroup("Create tarball")
+            core.startGroup("Create sdist tarball")
             await exec.exec("docker", [
                 "exec",
                 container,
-                "tar",
-                "--exclude-vcs",
-                "--exclude=debian",
-                "--create",
-                "--gzip",
-                "--verbose",
+                "python3",
+                "setup.py",
+                "sdist",
                 `--file=../${pkg}_${version}.orig.tar.gz`,
-                "."
+            ])
+            await exec.exec("docker", [
+                "exec",
+                container,
+                `mv dist/${pkg}-${version}.tar.gz`,
+                `../${pkg}_${version}.orig.tar.gz`,
             ])
             core.endGroup()
         }
